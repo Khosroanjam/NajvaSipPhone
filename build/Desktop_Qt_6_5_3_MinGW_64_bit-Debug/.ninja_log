@@ -1,0 +1,9 @@
+# ninja log v6
+10	6798	8071910690304402	SagharSIP_autogen/timestamp	2b6786f7881ce00
+10	6798	8071910690304402	SagharSIP_autogen/mocs_compilation.cpp	2b6786f7881ce00
+10	6798	8071910690304402	D:/Qt/SagharSIP/build/Desktop_Qt_6_5_3_MinGW_64_bit-Debug/SagharSIP_autogen/timestamp	2b6786f7881ce00
+10	6798	8071910690304402	D:/Qt/SagharSIP/build/Desktop_Qt_6_5_3_MinGW_64_bit-Debug/SagharSIP_autogen/mocs_compilation.cpp	2b6786f7881ce00
+6808	12167	8071910691636686	CMakeFiles/SagharSIP.dir/SagharSIP_autogen/mocs_compilation.cpp.obj	62fba8e93a7edbe8
+6816	12171	8071910691802741	CMakeFiles/SagharSIP.dir/main.cpp.obj	57f9b6c3a90394d7
+6824	12184	8071910691802741	CMakeFiles/SagharSIP.dir/mainwindow.cpp.obj	cd0d819eb200daf4
+12184	13524	8071910745432801	SagharSIP.exe	b8d8b370a0cf45ed
