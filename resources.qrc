@@ -1,0 +1,30 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qtquickcontrols2.conf</file>
+        <file>qml/Main.qml</file>
+        <file>qml/SettingsPage.qml</file>
+        <file>qml/theme/qmldir</file>
+        <file>qml/theme/Theme.qml</file>
+        <file>qml/components/Icon.qml</file>
+        <file>qml/components/AppButton.qml</file>
+        <file>qml/components/IconButton.qml</file>
+        <file>qml/components/FocusRing.qml</file>
+        <file>qml/components/Card.qml</file>
+        <file>qml/components/Avatar.qml</file>
+        <file>qml/components/StatusChip.qml</file>
+        <file>qml/components/AppTextField.qml</file>
+        <file>qml/components/AppComboBox.qml</file>
+        <file>qml/components/EmptyState.qml</file>
+        <file>qml/components/SectionHeader.qml</file>
+        <file>qml/phone/PhonePanel.qml</file>
+        <file>qml/phone/Dialpad.qml</file>
+        <file>qml/phone/CallScreen.qml</file>
+        <file>qml/phone/AfterCallNoteDialog.qml</file>
+        <file>qml/phone/LastNotesView.qml</file>
+        <file>qml/crm/CrmPanel.qml</file>
+        <file>qml/crm/ContactHeader.qml</file>
+        <file>qml/crm/CallHistory.qml</file>
+        <file>qml/crm/NotesSection.qml</file>
+        <file>qml/calendar/CalendarPanel.qml</file>
+    </qresource>
+</RCC>
