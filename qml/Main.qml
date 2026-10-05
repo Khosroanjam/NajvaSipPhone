@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtCore
 
 import "theme"
 import "components"
@@ -15,7 +16,17 @@ ApplicationWindow {
     height: 780
     minimumWidth: 960
     minimumHeight: 620
-    title: "Najva — Tarazpouyesh SIP Phone"
+    readonly property string appName: "Najva"
+    // Organization name from Settings, shown after the app name.
+    title: appSettings.organizationName.trim() !== ""
+           ? appName + " — " + appSettings.organizationName.trim()
+           : appName
+
+    Settings {
+        id: appSettings
+        category: "General"
+        property string organizationName: "Tarazpouyesh"
+    }
     color: Theme.bg
     // Frameless: we draw our own title bar. Min/max/system-menu hints keep
     // taskbar minimize, Win+arrow keys and Aero snap working.
@@ -260,6 +271,7 @@ ApplicationWindow {
 
                 SettingsPage {
                     id: settingsPage
+                    appSettings: appSettings
                     account: root.sipReady ? sipManager.account : null
                     onBackPressed: root.pageIndex = 0
                 }

@@ -8,6 +8,7 @@ import "components"
 Item {
     id: root
     property var account: null
+    property var appSettings: null      // Main.qml Settings (organizationName)
     signal backPressed()
 
     readonly property bool sipReady: typeof sipManager !== "undefined" && sipManager !== null
@@ -220,6 +221,23 @@ Item {
                         compact: true
                         onClicked: root.loadDevices()
                     }
+                }
+            }
+
+            // ── Organization ────────────────────────────────────────
+            SettingsCard {
+                Layout.fillWidth: true
+                iconName: "users"
+                title: "Organization"
+                subtitle: "Shown in the title bar after the app name."
+
+                AppTextField {
+                    Layout.fillWidth: true
+                    label: "Organization name"
+                    placeholderText: "e.g. Tarazpouyesh"
+                    text: root.appSettings ? root.appSettings.organizationName : ""
+                    helperText: "Title preview: Najva" + (text.trim() !== "" ? " — " + text.trim() : "")
+                    onEdited: function(t) { if (root.appSettings) root.appSettings.organizationName = t }
                 }
             }
 
