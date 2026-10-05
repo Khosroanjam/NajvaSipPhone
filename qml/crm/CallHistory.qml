@@ -116,6 +116,7 @@ ColumnLayout {
                         font.pixelSize: Theme.textMd
                         font.weight: Font.DemiBold
                         elide: Text.ElideRight
+                        horizontalAlignment: Text.AlignLeft
                     }
                     Label {
                         Layout.fillWidth: true
@@ -136,7 +137,7 @@ ColumnLayout {
                 }
 
                 IconButton {
-                    visible: row.hovered || row.selected
+                    visible: (row.hovered || row.selected) && !modelData.contactId
                     iconName: "user-plus"
                     iconSize: 16
                     buttonSize: 32

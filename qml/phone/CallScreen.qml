@@ -21,7 +21,12 @@ Item {
     readonly property bool incoming: call !== null && call.direction === "incoming"
     readonly property bool ringingIn: incoming && !connected && !ended
     readonly property int duration: call ? call.duration : 0
-    readonly property string displayName: call && call.callerName ? call.callerName : callerNumber
+    // Phonebook entry for the other party (empty object when unknown).
+    readonly property var contact: callerNumber !== "" && typeof db !== "undefined" && db
+                                   ? db.contactByNumber(callerNumber) : ({})
+    readonly property bool knownContact: contact && contact.id !== undefined
+    readonly property string displayName: knownContact ? contact.name
+                                        : call && call.callerName ? call.callerName : callerNumber
     property bool keypadOpen: false
     property string dtmfSent: ""
 

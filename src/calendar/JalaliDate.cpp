@@ -91,92 +91,125 @@ QDate JalaliDate::toGregorian() const
     return QDate(gy, gm, gd);
 }
 
+QString JalaliDate::toGregorianString(int jy, int jm, int jd)
+{
+    int gy, gm, gd;
+    jalaliToGregorian(jy, jm, jd, gy, gm, gd);
+    return QDate(gy, gm, gd).toString(Qt::ISODate);
+}
+
+QVariantMap JalaliDate::fromGregorianString(const QString &isoDate)
+{
+    QVariantMap result;
+    // Accepts "yyyy-MM-dd" and full timestamps such as "yyyy-MM-ddTHH:mm:ss".
+    const QDate date = QDate::fromString(isoDate.left(10), Qt::ISODate);
+    if (!date.isValid())
+        return result;
+    int jy, jm, jd;
+    gregorianToJalali(date.year(), date.month(), date.day(), jy, jm, jd);
+    result["year"] = jy;
+    result["month"] = jm;
+    result["day"] = jd;
+    return result;
+}
+
+QVariantMap JalaliDate::today()
+{
+    return fromGregorianString(QDate::currentDate().toString(Qt::ISODate));
+}
+
+int JalaliDate::monthLength(int jy, int jm)
+{
+    if (jm <= 6) return 31;
+    if (jm <= 11) return 30;
+    return isJalaliLeap(jy) ? 30 : 29;
+}
+
+int JalaliDate::weekdayOf(int jy, int jm, int jd)
+{
+    int gy, gm, gd;
+    jalaliToGregorian(jy, jm, jd, gy, gm, gd);
+    return (QDate(gy, gm, gd).dayOfWeek() + 1) % 7;  // Qt: 1=Mon..7=Sun
+}
+
+// Jalaali calendar (Borkowski's 33-year break table), as used by jalaali-js.
+// Returns the Gregorian year in which Farvardin 1 of `jy` falls, the March
+// day of that Nowruz, and the number of years since the last leap year
+// (0 means `jy` itself is a leap year).
+void JalaliDate::jalCal(int jy, int &gy, int &march, int &leap)
+{
+    static const int breaks[] = {-61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210,
+                                 1635, 2060, 2097, 2192, 2262, 2324, 2394, 2456, 3178};
+    const int bl = sizeof(breaks) / sizeof(breaks[0]);
+
+    gy = jy + 621;
+    int leapJ = -14;
+    int jp = breaks[0];
+    int jump = 0;
+    for (int i = 1; i < bl; i++) {
+        const int jm = breaks[i];
+        jump = jm - jp;
+        if (jy < jm)
+            break;
+        leapJ += (jump / 33) * 8 + (jump % 33) / 4;
+        jp = jm;
+    }
+    int n = jy - jp;
+    leapJ += (n / 33) * 8 + ((n % 33) + 3) / 4;
+    if (jump % 33 == 4 && jump - n == 4)
+        leapJ += 1;
+
+    const int leapG = gy / 4 - ((gy / 100 + 1) * 3) / 4 - 150;
+    march = 20 + leapJ - leapG;
+
+    if (jump - n < 6)
+        n = n - jump + ((jump + 4) / 33) * 33;
+    leap = (((n + 1) % 33) - 1) % 4;
+    if (leap == -1)
+        leap = 4;
+}
+
 bool JalaliDate::isJalaliLeap(int jy)
 {
-    // Astronomical algorithm by Kazimierz M. Borkowski
-    int breaks[] = {-61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210,
-                    1635, 2060, 2097, 2192, 2262, 2324, 2394, 2456, 3178};
-    int numBreaks = sizeof(breaks) / sizeof(breaks[0]);
-
-    for (int i = 0; i < numBreaks; i++) {
-        int dm = (breaks[i] - jy) * 31 + (breaks[i] < 0 ? 0 : 1);
-        int rem = abs(dm) % 128;
-        int remaining = 128 - rem;
-        int daysInNextChange = dm > 0 ? remaining : (remaining == 128 ? 0 : rem);
-        if (daysInNextChange == 0) return (i % 2 == 0);
-    }
-    return false;
+    int gy, march, leap;
+    jalCal(jy, gy, march, leap);
+    return leap == 0;
 }
 
 void JalaliDate::gregorianToJalali(int gy, int gm, int gd, int &jy, int &jm, int &jd)
 {
-    // Borkowski algorithm
-    // days since epoch
-    int g_d_m[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+    const qint64 jdn = QDate(gy, gm, gd).toJulianDay();
+    jy = gy - 621;
+    int calGy, march, leap;
+    jalCal(jy, calGy, march, leap);
+    qint64 k = jdn - QDate(calGy, 3, march).toJulianDay();
 
-    int gy2 = (gm > 2) ? (gy + 1) : gy;
-    int days = 355666 + (365 * gy) + ((gy2 + 3) / 4) - ((gy2 + 99) / 100) + ((gy2 + 399) / 400) + gd + g_d_m[gm - 1];
-
-    jy = -1595 + 33 * (days / 12053);
-    int remaining = days % 12053;
-    jy += 4 * (remaining / 1461);
-    remaining %= 1461;
-
-    if (remaining > 365) {
-        jy += (remaining - 1) / 365;
-        remaining = (remaining - 1) % 365;
-    }
-
-    if (remaining < 186) {
-        jm = 1 + remaining / 31;
-        jd = 1 + remaining % 31;
+    if (k >= 0) {
+        if (k <= 185) {
+            jm = 1 + int(k / 31);
+            jd = 1 + int(k % 31);
+            return;
+        }
+        k -= 186;
     } else {
-        jm = 7 + (remaining - 186) / 30;
-        jd = 1 + (remaining - 186) % 30;
+        // Before Nowruz: still in the previous Jalali year.
+        jy -= 1;
+        k += 179;
+        if (leap == 1)
+            k += 1;
     }
+    jm = 7 + int(k / 30);
+    jd = 1 + int(k % 30);
 }
 
 void JalaliDate::jalaliToGregorian(int jy, int jm, int jd, int &gy, int &gm, int &gd)
 {
-    // Borkowski algorithm (reverse)
-    int days = (jy - 1) * 365;
-    // leap years
-    int leaps = 0;
-    // count Jalali leap years before jy
-    for (int y = 1; y < jy; y++) {
-        if (isJalaliLeap(y)) leaps++;
-    }
-    days += leaps;
-
-    // days in months before jm
-    for (int m = 1; m < jm; m++) {
-        if (m <= 6) days += 31;
-        else if (m <= 11) days += 30;
-        else days += (isJalaliLeap(jy) ? 30 : 29);
-    }
-    days += jd;
-
-    // Convert from Jalali epoch (622-03-21 Gregorian) to Gregorian days
-    // Approximate: Jalali starts ~21 March 622
-    days += 79; // offset calibration
-
-    // Convert days to Gregorian year
-    gy = 1;
-    while (true) {
-        int yearDays = ((gy % 4 == 0 && gy % 100 != 0) || gy % 400 == 0) ? 366 : 365;
-        if (days <= yearDays) break;
-        days -= yearDays;
-        gy++;
-    }
-
-    // Month and day
-    static int monthDays[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    if ((gy % 4 == 0 && gy % 100 != 0) || gy % 400 == 0) monthDays[1] = 29;
-    gm = 0;
-    while (gm < 12 && days > monthDays[gm]) {
-        days -= monthDays[gm];
-        gm++;
-    }
-    gm++;
-    gd = days;
+    int calGy, march, leap;
+    jalCal(jy, calGy, march, leap);
+    const qint64 jdn = QDate(calGy, 3, march).toJulianDay()
+                     + (jm - 1) * 31 - (jm / 7) * (jm - 7) + jd - 1;
+    const QDate date = QDate::fromJulianDay(jdn);
+    gy = date.year();
+    gm = date.month();
+    gd = date.day();
 }

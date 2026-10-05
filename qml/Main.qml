@@ -15,12 +15,18 @@ ApplicationWindow {
     height: 780
     minimumWidth: 960
     minimumHeight: 620
-    title: "Saghar — Tarazpouyesh SIP Phone"
+    title: "Najva — Tarazpouyesh SIP Phone"
     color: Theme.bg
+    // Frameless: we draw our own title bar. Min/max/system-menu hints keep
+    // taskbar minimize, Win+arrow keys and Aero snap working.
+    flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowMinMaxButtonsHint
+           | Qt.WindowSystemMenuHint | Qt.WindowCloseButtonHint
+    readonly property bool maximized: visibility === Window.Maximized
 
-    property int pageIndex: 0  // 0=CRM, 1=Calendar, 2=Settings
+    property int pageIndex: 0  // 0=CRM, 1=Phonebook, 2=Calendar, 3=Settings
     readonly property var pages: [
-        { title: "Contacts & History", subtitle: "Recent calls, contact details and call notes", icon: "users",    nav: "CRM" },
+        { title: "Calls & History",    subtitle: "Recent calls, contact details and call notes", icon: "history",  nav: "CRM" },
+        { title: "Phonebook",          subtitle: "Saved contacts — names show on incoming and outgoing calls", icon: "users", nav: "Contacts" },
         { title: "Calendar",           subtitle: "Call activity by Jalali date",                 icon: "calendar", nav: "Calendar" },
         { title: "Settings",           subtitle: "SIP account, sync server and audio devices",   icon: "settings", nav: "Settings" }
     ]
@@ -55,8 +61,19 @@ ApplicationWindow {
     font.family: Theme.fontFamily
     font.pixelSize: Theme.textMd
 
+    TitleBar {
+        id: titleBar
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        title: root.title
+    }
+
     RowLayout {
-        anchors.fill: parent
+        anchors.top: titleBar.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
         spacing: 0
 
         // ── Navigation rail ──────────────────────────────────────────
@@ -73,28 +90,9 @@ ApplicationWindow {
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.topMargin: 16
+                anchors.topMargin: 12
                 anchors.bottomMargin: 16
                 spacing: 6
-
-                // Brand mark
-                Rectangle {
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.bottomMargin: 18
-                    width: 40; height: 40
-                    radius: 12
-                    gradient: Gradient {
-                        GradientStop { position: 0.0; color: Theme.accent }
-                        GradientStop { position: 1.0; color: Theme.accent2 }
-                    }
-                    Icon {
-                        anchors.centerIn: parent
-                        name: "phone"
-                        size: 20
-                        color: Theme.textOnAccent
-                    }
-                    Accessible.name: "Saghar"
-                }
 
                 Repeater {
                     model: root.pages
@@ -252,6 +250,10 @@ ApplicationWindow {
                     currentContact: phonePanel.currentContact
                 }
 
+                ContactsPanel {
+                    id: contactsPanel
+                }
+
                 CalendarPanel {
                     id: calendarPanel
                 }
@@ -262,6 +264,51 @@ ApplicationWindow {
                     onBackPressed: root.pageIndex = 0
                 }
             }
+        }
+    }
+
+    // ── Window outline + resize edges (frameless) ─────────────────────
+    Rectangle {
+        anchors.fill: parent
+        color: "transparent"
+        border.width: 1
+        border.color: Theme.borderStrong
+        visible: !root.maximized
+        z: 100
+    }
+
+    Item {
+        anchors.fill: parent
+        visible: !root.maximized
+        z: 101
+        readonly property int grip: 6
+
+        ResizeGrip { edges: Qt.LeftEdge;   anchors { left: parent.left; top: parent.top; bottom: parent.bottom; topMargin: parent.grip * 2; bottomMargin: parent.grip * 2 } width: parent.grip }
+        ResizeGrip { edges: Qt.RightEdge;  anchors { right: parent.right; top: parent.top; bottom: parent.bottom; topMargin: parent.grip * 2; bottomMargin: parent.grip * 2 } width: parent.grip }
+        ResizeGrip { edges: Qt.TopEdge;    anchors { top: parent.top; left: parent.left; right: parent.right; leftMargin: parent.grip * 2; rightMargin: parent.grip * 2 } height: parent.grip / 2 }
+        ResizeGrip { edges: Qt.BottomEdge; anchors { bottom: parent.bottom; left: parent.left; right: parent.right; leftMargin: parent.grip * 2; rightMargin: parent.grip * 2 } height: parent.grip }
+        ResizeGrip { edges: Qt.TopEdge | Qt.LeftEdge;     anchors { top: parent.top; left: parent.left } width: parent.grip * 2; height: parent.grip * 2 }
+        ResizeGrip { edges: Qt.TopEdge | Qt.RightEdge;    anchors { top: parent.top; right: parent.right } width: parent.grip * 2; height: parent.grip / 2 }
+        ResizeGrip { edges: Qt.BottomEdge | Qt.LeftEdge;  anchors { bottom: parent.bottom; left: parent.left } width: parent.grip * 2; height: parent.grip * 2 }
+        ResizeGrip { edges: Qt.BottomEdge | Qt.RightEdge; anchors { bottom: parent.bottom; right: parent.right } width: parent.grip * 2; height: parent.grip * 2 }
+    }
+
+    // Edge/corner strip that hands resizing to the OS.
+    component ResizeGrip: Item {
+        id: grip
+        property int edges: 0
+        HoverHandler {
+            cursorShape: {
+                var e = grip.edges
+                if (e === (Qt.TopEdge | Qt.LeftEdge) || e === (Qt.BottomEdge | Qt.RightEdge)) return Qt.SizeFDiagCursor
+                if (e === (Qt.TopEdge | Qt.RightEdge) || e === (Qt.BottomEdge | Qt.LeftEdge)) return Qt.SizeBDiagCursor
+                if (e === Qt.LeftEdge || e === Qt.RightEdge) return Qt.SizeHorCursor
+                return Qt.SizeVerCursor
+            }
+        }
+        DragHandler {
+            target: null
+            onActiveChanged: if (active) root.startSystemResize(grip.edges)
         }
     }
 

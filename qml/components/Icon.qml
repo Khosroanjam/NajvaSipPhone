@@ -53,7 +53,13 @@ Item {
         case "chevron-left":  return ["M15 18l-6-6 6-6"]
         case "chevron-right": return ["M9 18l6-6-6-6"]
         case "check":         return ["M20 6L9 17l-5-5"]
+        case "trash":         return ["M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", "M10 11v6", "M14 11v6"]
         case "x":             return ["M18 6L6 18", "M6 6l12 12"]
+        // Window controls (thin, Windows-like proportions; use strokeWidth ~1.4)
+        case "win-minimize":  return ["M6 12h12"]
+        case "win-maximize":  return ["M6.5 6.5h11v11h-11z"]
+        case "win-restore":   return ["M6.5 9h8.5v8.5H6.5z", "M9 9V6.5h8.5V15H15"]
+        case "win-close":     return ["M7 7l10 10", "M17 7L7 17"]
         case "sun":           return [circle(12, 12, 4), "M12 2v2", "M12 20v2", "M4.93 4.93l1.41 1.41", "M17.66 17.66l1.41 1.41", "M2 12h2", "M20 12h2", "M6.34 17.66l-1.41 1.41", "M19.07 4.93l-1.41 1.41"]
         case "moon":          return ["M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"]
         case "notes":         return ["M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z", "M14 2v4a2 2 0 0 0 2 2h4", "M10 9H8", "M16 13H8", "M16 17H8"]

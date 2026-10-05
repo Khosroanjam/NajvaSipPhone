@@ -37,6 +37,7 @@ Card {
                 Label {
                     Layout.fillWidth: true
                     elide: Text.ElideRight
+                    horizontalAlignment: Text.AlignLeft
                     text: root.hasContact ? (root.contact.name || "Unknown") : "No contact selected"
                     color: root.hasContact ? Theme.textPrimary : Theme.textSecondary
                     font: root.hasContact ? Theme.fontHeading : Theme.fontTitle

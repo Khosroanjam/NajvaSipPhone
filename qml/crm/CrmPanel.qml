@@ -17,9 +17,30 @@ Item {
     Connections {
         target: typeof db !== "undefined" ? db : null
         function onCallHistoryChanged() { root.refreshHistory() }
+        // History rows carry phonebook names, so re-read when contacts change.
+        function onContactsChanged() {
+            root.refreshHistory()
+            if (root.currentContact)
+                root.currentContact = root.contactFor(root.currentContact.phone, "")
+        }
     }
 
     Component.onCompleted: root.refreshHistory()
+
+    // Contact card data for a number: the phonebook entry when there is one.
+    function contactFor(number, fallbackName) {
+        var c = typeof db !== "undefined" && db ? db.contactByNumber(number) : null
+        var known = c && c.id !== undefined
+        var name = known ? c.name : (fallbackName || number)
+        return {
+            name: name,
+            phone: number,
+            email: known ? c.email : "",
+            company: known ? c.notes : "",
+            saved: known,
+            avatar: String(name).charAt(0).toUpperCase()
+        }
+    }
 
     function refreshHistory() {
         if (typeof db !== "undefined" && db)
@@ -52,12 +73,7 @@ Item {
                 }
                 onCallSelected: function(callId, number, name) {
                     root.selectedCallId = callId
-                    root.currentContact = {
-                        name: name || number,
-                        phone: number,
-                        email: "",
-                        avatar: (name || number).toString().charAt(0).toUpperCase()
-                    }
+                    root.currentContact = root.contactFor(number, name)
                 }
             }
         }
@@ -150,8 +166,14 @@ Item {
                     enabled: contactNameField.text.trim().length > 0
                     onClicked: {
                         if (!enabled) return
-                        if (typeof db !== "undefined" && db)
-                            db.addContact(contactNameField.text.trim(), root.pendingNumber)
+                        if (typeof db !== "undefined" && db) {
+                            var existing = db.contactByNumber(root.pendingNumber)
+                            if (existing && existing.id !== undefined)
+                                db.updateContact(existing.id, contactNameField.text.trim(), existing.number,
+                                                 existing.email, existing.notes)
+                            else
+                                db.addContact(contactNameField.text.trim(), root.pendingNumber)
+                        }
                         addContactDialog.close()
                     }
                 }

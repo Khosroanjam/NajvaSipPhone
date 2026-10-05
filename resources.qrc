@@ -16,6 +16,7 @@
         <file>qml/components/AppComboBox.qml</file>
         <file>qml/components/EmptyState.qml</file>
         <file>qml/components/SectionHeader.qml</file>
+        <file>qml/components/TitleBar.qml</file>
         <file>qml/phone/PhonePanel.qml</file>
         <file>qml/phone/Dialpad.qml</file>
         <file>qml/phone/CallScreen.qml</file>
@@ -25,6 +26,7 @@
         <file>qml/crm/ContactHeader.qml</file>
         <file>qml/crm/CallHistory.qml</file>
         <file>qml/crm/NotesSection.qml</file>
+        <file>qml/crm/ContactsPanel.qml</file>
         <file>qml/calendar/CalendarPanel.qml</file>
     </qresource>
 </RCC>

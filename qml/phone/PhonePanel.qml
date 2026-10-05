@@ -18,6 +18,15 @@ Item {
     readonly property bool sipReady: typeof sipManager !== "undefined" && sipManager !== null
     readonly property var activeCall: sipReady && activeCallId > 0 ? sipManager.findCall(activeCallId) : null
     readonly property bool canCall: sipReady && sipManager.isRegistered && dialedNumber.trim().length > 0
+    readonly property bool dbReady: typeof db !== "undefined" && db !== null
+    // Phonebook match for the number being dialled (empty object when none).
+    readonly property var dialedContact: dbReady && dialedNumber.trim().length >= 3
+                                         ? db.contactByNumber(dialedNumber) : ({})
+
+    function contactName(number) {
+        var c = dbReady ? db.contactByNumber(number) : null
+        return c && c.id !== undefined ? c.name : ""
+    }
 
     function placeCall() {
         if (!root.canCall) return
@@ -48,6 +57,16 @@ Item {
             if (typeof apiClient !== "undefined" && apiClient && apiClient.isConfigured() && callerNumber)
                 apiClient.fetchLastNotesByNumber(callerNumber, 3)
         }
+        function onCallCreated(callId) {
+            if (root.inCall) return
+            var call = sipManager.findCall(callId)
+            root.activeCallId = callId
+            root.lastCallId = callId
+            if (call && call.remoteNumber)
+                root.dialedNumber = call.remoteNumber
+            root.lastNotesData = root.dbReady ? db.lastNotesByNumber(root.dialedNumber, 3) : []
+            root.inCall = true
+        }
         function onCallEnded(callId) {
             if (callId === root.activeCallId) {
                 root.inCall = false
@@ -58,7 +77,7 @@ Item {
             if (callId !== root.lastCallId) return
             afterCallDialog.callHistoryId = callHistoryId
             afterCallDialog.callNumber = number
-            afterCallDialog.callName = name
+            afterCallDialog.callName = root.contactName(number) || name
             var call = sipManager.findCall(callId)
             afterCallDialog.callDuration = call ? call.duration : 0
             afterCallDialog.open()
@@ -122,6 +141,19 @@ Item {
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.textXl
             }
+        }
+
+        // Name of the matching phonebook contact, if any
+        Label {
+            Layout.alignment: Qt.AlignHCenter
+            Layout.maximumWidth: root.width - 48
+            Layout.preferredHeight: 20
+            text: root.dialedContact && root.dialedContact.id !== undefined ? root.dialedContact.name : ""
+            color: Theme.accent
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.textMd
+            font.weight: Font.DemiBold
+            elide: Text.ElideRight
         }
 
         Rectangle {

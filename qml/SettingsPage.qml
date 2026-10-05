@@ -138,7 +138,7 @@ Item {
                 Layout.fillWidth: true
                 iconName: "cloud"
                 title: "Central server (sync)"
-                subtitle: "Sync contacts, call logs and notes with the SagharSIP CRM server."
+                subtitle: "Sync contacts, call logs and notes with the Najva CRM server."
 
                 GridLayout {
                     Layout.fillWidth: true
@@ -235,6 +235,63 @@ Item {
                     options: ["Dark", "Light"]
                     current: Theme.dark ? "Dark" : "Light"
                     onSelected: function(v) { Theme.dark = (v === "Dark") }
+                }
+            }
+
+            // ── About ───────────────────────────────────────────────
+            SettingsCard {
+                Layout.fillWidth: true
+                iconName: "user"
+                title: "About"
+                subtitle: "Najva SIP Phone · version " + Qt.application.version
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: devRow.implicitHeight + 32
+                    radius: Theme.radius
+                    color: Theme.surfaceRaised
+                    border.width: 1
+                    border.color: Theme.border
+
+                    RowLayout {
+                        id: devRow
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.margins: 16
+                        spacing: 14
+
+                        Avatar {
+                            size: 52
+                            name: "Sadegh Khosroanjam"
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+
+                            Label {
+                                text: "DEVELOPER"
+                                color: Theme.accent
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.textXs
+                                font.weight: Font.DemiBold
+                                font.letterSpacing: 1.2
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: "Sadegh Khosroanjam"
+                                color: Theme.textPrimary
+                                font: Theme.fontTitle
+                                elide: Text.ElideRight
+                            }
+                            Label {
+                                text: "@khosroanjam"
+                                color: Theme.textSecondary
+                                font: Theme.fontBody
+                            }
+                        }
+                    }
                 }
             }
 

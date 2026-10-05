@@ -5,6 +5,7 @@
 #include <QDate>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 
 class JalaliDate : public QObject
 {
@@ -36,6 +37,14 @@ public:
     Q_INVOKABLE static QVariantList weekdayNames();
     Q_INVOKABLE static QString formatJalali(int jy, int jm, int jd);
 
+    // Stateless helpers for the calendar UI. Gregorian dates cross the QML
+    // boundary as "yyyy-MM-dd" strings so no timezone conversion can shift them.
+    Q_INVOKABLE static QString toGregorianString(int jy, int jm, int jd);
+    Q_INVOKABLE static QVariantMap fromGregorianString(const QString &isoDate);
+    Q_INVOKABLE static QVariantMap today();
+    Q_INVOKABLE static int monthLength(int jy, int jm);
+    Q_INVOKABLE static int weekdayOf(int jy, int jm, int jd);  // 0=Shanbe..6=Jom'e
+
 signals:
     void dateChanged();
 
@@ -43,6 +52,7 @@ private:
     static void gregorianToJalali(int gy, int gm, int gd, int &jy, int &jm, int &jd);
     static void jalaliToGregorian(int jy, int jm, int jd, int &gy, int &gm, int &gd);
     static bool isJalaliLeap(int jy);
+    static void jalCal(int jy, int &gy, int &march, int &leap);
 
     int m_jy, m_jm, m_jd;
 };

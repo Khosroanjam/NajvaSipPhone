@@ -5,12 +5,14 @@ import QtQuick.Layouts
 import "../theme"
 import "../components"
 
+// Jalali month grid plus a details card with three views:
+//   Day    — the selected day's calls with their after-call notes
+//   Report — per-day call counts for the shown month
+//   Search — calls whose number, name or note text matches a query
+// All date math goes through `jalaliDate` (C++); the DB is keyed by
+// Gregorian "yyyy-MM-dd" strings.
 Item {
     id: root
-    property int currentJalaliYear: 1404
-    property int currentJalaliMonth: 5
-    property int selectedDay: 0
-    property var callsForSelectedDay: []
 
     readonly property var monthNames: [
         "", "Farvardin", "Ordibehesht", "Khordad", "Tir",
@@ -18,164 +20,117 @@ Item {
         "Dey", "Bahman", "Esfand"
     ]
     readonly property var weekdayHeaders: ["Sh", "Ye", "Do", "Se", "Ch", "Pa", "Jo"]
+    readonly property var weekdayNames: ["Saturday", "Sunday", "Monday", "Tuesday",
+                                         "Wednesday", "Thursday", "Friday"]
+
+    readonly property bool dbReady: typeof db !== "undefined" && db !== null
+
+    property int todayJalaliYear: 0
+    property int todayJalaliMonth: 0
+    property int todayJalaliDay: 0
+    property int currentJalaliYear: 1404
+    property int currentJalaliMonth: 1
+    property int selectedDay: 0
+
+    property var dayStats: ({})      // day of month -> stats row (see Database::callStatsByDateRange)
+    property var monthReport: []     // the same rows, in day order
+    property var callsForSelectedDay: []
+    property int detailTab: 0        // 0 = day, 1 = report, 2 = search
+    property string searchQuery: ""
+    property var searchResults: []
+
+    readonly property var selectedStats: dayStats[selectedDay] || null
+    readonly property var monthTotals: {
+        var t = { total: 0, missed: 0, duration: 0, busiest: 0 }
+        for (var i = 0; i < monthReport.length; i++) {
+            var r = monthReport[i]
+            t.total += r.total
+            t.missed += r.missed
+            t.duration += r.duration
+            t.busiest = Math.max(t.busiest, r.total)
+        }
+        return t
+    }
 
     Component.onCompleted: {
-        // Initialize today's Jalali date
-        var now = new Date()
-        var j = gregorianToJalali(now.getFullYear(), now.getMonth() + 1, now.getDate())
-        todayJalaliYear = j.jy
-        todayJalaliMonth = j.jm
-        todayJalaliDay = j.jd
-        currentJalaliYear = j.jy
-        currentJalaliMonth = j.jm
-        updateCalendar()
+        var t = jalaliDate.today()
+        todayJalaliYear = t.year
+        todayJalaliMonth = t.month
+        todayJalaliDay = t.day
+        goToday()
     }
 
-    function updateCalendar() {
-        var gDate = jalaliToGregorian(currentJalaliYear, currentJalaliMonth, 1)
-        var firstDayGreg = new Date(gDate.year, gDate.month - 1, gDate.day)
-        var firstDayWeekday = firstDayGreg.getDay()
-        var jalaliWeekday = (firstDayWeekday + 1) % 7
+    Connections {
+        target: root.dbReady ? db : null
+        function onCallHistoryChanged() { root.reload() }
+        function onNotesChanged() { root.reload() }
+        function onContactsChanged() { root.reload() }
+    }
 
-        var daysCount = daysInMonth(currentJalaliMonth, currentJalaliYear)
+    Shortcut {
+        sequence: StandardKey.Find
+        enabled: root.visible
+        onActivated: root.detailTab = 2
+    }
 
+    onDetailTabChanged: if (detailTab === 2) searchField.field.forceActiveFocus()
+
+    // ── Data ─────────────────────────────────────────────────────────
+    function gregorianFor(day) {
+        return jalaliDate.toGregorianString(currentJalaliYear, currentJalaliMonth, day)
+    }
+
+    function refreshMonth() {
+        var len = jalaliDate.monthLength(currentJalaliYear, currentJalaliMonth)
+        var stats = {}
+        var report = []
+        if (dbReady) {
+            var rows = db.callStatsByDateRange(gregorianFor(1), gregorianFor(len))
+            for (var i = 0; i < rows.length; i++) {
+                var day = jalaliDate.fromGregorianString(rows[i].date).day
+                var row = {
+                    day: day, date: rows[i].date, total: rows[i].total,
+                    incoming: rows[i].incoming, outgoing: rows[i].outgoing,
+                    missed: rows[i].missed, duration: rows[i].duration
+                }
+                stats[day] = row
+                report.push(row)
+            }
+        }
+        dayStats = stats
+        monthReport = report
+
+        // Week starts on Saturday: pad with blanks up to the 1st's weekday.
+        var lead = jalaliDate.weekdayOf(currentJalaliYear, currentJalaliMonth, 1)
         calendarModel.clear()
-        for (var i = 0; i < jalaliWeekday; i++) {
-            calendarModel.append({ day: 0, hasCalls: false, isToday: false, isSelected: false })
-        }
-        for (var d = 1; d <= daysCount; d++) {
-            var isToday = (currentJalaliYear === todayJalaliYear &&
-                           currentJalaliMonth === todayJalaliMonth && d === todayJalaliDay)
-            var isSelected = (selectedDay === d)
-            calendarModel.append({ day: d, hasCalls: checkHasCalls(d), isToday: isToday, isSelected: isSelected })
-        }
+        for (var b = 0; b < lead; b++)
+            calendarModel.append({ day: 0, count: 0 })
+        for (var d = 1; d <= len; d++)
+            calendarModel.append({ day: d, count: stats[d] ? stats[d].total : 0 })
     }
 
-    function checkHasCalls(day) {
-        var gDate = jalaliToGregorian(currentJalaliYear, currentJalaliMonth, day)
-        var dateStr = gDate.year + "-" +
-                      String(gDate.month).padStart(2, '0') + "-" +
-                      String(gDate.day).padStart(2, '0')
-        if (typeof db !== "undefined" && db) {
-            var calls = db.callHistoryByDate(dateStr)
-            return calls && calls.length > 0
-        }
-        return false
+    function loadSelectedDay() {
+        callsForSelectedDay = selectedDay > 0 && dbReady ? db.callHistoryByDate(gregorianFor(selectedDay)) : []
+    }
+
+    function reload() {
+        refreshMonth()
+        loadSelectedDay()
+        if (searchQuery !== "")
+            runSearch()
     }
 
     function selectDay(day) {
         selectedDay = day
-        var gDate = jalaliToGregorian(currentJalaliYear, currentJalaliMonth, day)
-        var dateStr = gDate.year + "-" +
-                      String(gDate.month).padStart(2, '0') + "-" +
-                      String(gDate.day).padStart(2, '0')
-        if (typeof db !== "undefined" && db) {
-            callsForSelectedDay = db.callHistoryByDate(dateStr)
-        } else {
-            callsForSelectedDay = []
-        }
-        updateCalendar()
+        loadSelectedDay()
     }
 
-    // Borkowski algorithm:
-    function jalaliToGregorian(jy, jm, jd) {
-        var jy2 = jy - 979
-        var jm2 = jm - 1
-        var days = jy2 * 365 + Math.floor(jy2 / 33) * 8 + Math.floor(((jy2 % 33) + 3) / 4)
-        for (var m = 0; m < jm2; m++) {
-            if (m < 6) days += 31
-            else if (m < 11) days += 30
-            else days += (isJalaliLeap(jy) ? 30 : 29)
-        }
-        days += jd - 1
-        days += 538
-        // Gregorian epoch offset
-        var epbase = days + 400
-        var gy = Math.floor(epbase / 146097) * 400
-        var epbase2 = epbase % 146097
-        if (epbase2 < 0) epbase2 += 146097
-        var gy2 = Math.floor((epbase2) / 36524) * 100
-        var epbase3 = epbase2 % 36524
-        if (epbase3 < 0) epbase3 += 36524
-        var gy3 = Math.floor(epbase3 / 1461) * 4
-        var epbase4 = epbase3 % 1461
-        if (epbase4 < 0) epbase4 += 1461
-        var gy4 = Math.floor(epbase4 / 365)
-        if (gy4 > 3) gy4 = 3
-        var gyFinal = gy + gy2 + gy3 + gy4
-        var remaining = epbase4 - gy4 * 365
-        if (remaining < 0) remaining += 365
-
-        var monthLengths = [31, (isGregorianLeap(gyFinal + 1) ? 29 : 28), 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-        var gm = 0
-        while (gm < 12 && remaining >= monthLengths[gm]) {
-            remaining -= monthLengths[gm]
-            gm++
-        }
-        gm++
-        var gd = remaining + 1
-        // Fix year increment:
-        if (jy > 0) gyFinal++
-        return { year: gyFinal, month: gm, day: gd }
-    }
-
-    function isJalaliLeap(jy) {
-        var breaks = [-61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210,
-                      1635, 2060, 2097, 2192, 2262, 2324, 2394, 2456, 3178]
-        for (var i = 0; i < breaks.length; i++) {
-            var dm = (breaks[i] - jy) * 31 + (breaks[i] < 0 ? 0 : 1)
-            var rem = ((dm % 128) + 128) % 128
-            var daysInNextChange = dm > 0 ? (128 - rem) : (rem === 0 ? 128 : rem)
-            if (daysInNextChange === 0) return (i % 2 === 0)
-        }
-        return false
-    }
-
-    function isGregorianLeap(gy) {
-        return (gy % 4 === 0 && gy % 100 !== 0) || gy % 400 === 0
-    }
-
-    function daysInMonth(jm, jy) {
-        if (jm <= 6) return 31
-        if (jm <= 11) return 30
-        return isJalaliLeap(jy) ? 30 : 29
-    }
-
-    // Today
-    property int todayJalaliYear: 0
-    property int todayJalaliMonth: 0
-    property int todayJalaliDay: 0
-
-    function gregorianToJalali(gy, gm, gd) {
-        var gdm = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
-        var gy2 = (gm > 2) ? (gy + 1) : gy
-        var days = 355666 + (365 * gy) + Math.floor((gy2 + 3) / 4) -
-                   Math.floor((gy2 + 99) / 100) + Math.floor((gy2 + 399) / 400) +
-                   gd + gdm[gm - 1]
-
-        var jy = -1595 + 33 * Math.floor(days / 12053)
-        var remaining = days % 12053
-        jy += 4 * Math.floor(remaining / 1461)
-        remaining = remaining % 1461
-        if (remaining > 365) {
-            jy += Math.floor((remaining - 1) / 365)
-            remaining = (remaining - 1) % 365
-        }
-        var jm, jd
-        if (remaining < 186) {
-            jm = 1 + Math.floor(remaining / 31)
-            jd = 1 + (remaining % 31)
-        } else {
-            jm = 7 + Math.floor((remaining - 186) / 30)
-            jd = 1 + ((remaining - 186) % 30)
-        }
-        return { jy: jy, jm: jm, jd: jd }
-    }
-
-    function formatDuration(seconds) {
-        var m = Math.floor(seconds / 60)
-        var s = seconds % 60
-        return (m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s)
+    function showMonth(year, month) {
+        currentJalaliYear = year
+        currentJalaliMonth = month
+        selectedDay = 0
+        callsForSelectedDay = []
+        refreshMonth()
     }
 
     function shiftMonth(delta) {
@@ -183,23 +138,88 @@ Item {
         var y = currentJalaliYear
         if (m < 1) { m = 12; y-- }
         if (m > 12) { m = 1; y++ }
-        currentJalaliMonth = m
-        currentJalaliYear = y
-        selectedDay = 0
-        callsForSelectedDay = []
-        updateCalendar()
+        showMonth(y, m)
     }
 
     function goToday() {
-        currentJalaliYear = todayJalaliYear
-        currentJalaliMonth = todayJalaliMonth
+        showMonth(todayJalaliYear, todayJalaliMonth)
         selectDay(todayJalaliDay)
+        detailTab = 0
+    }
+
+    // Jump the calendar to the day of a DB timestamp and show its calls.
+    function openDate(timestamp) {
+        var j = jalaliDate.fromGregorianString(String(timestamp || ""))
+        if (!j.year)
+            return
+        if (j.year !== currentJalaliYear || j.month !== currentJalaliMonth)
+            showMonth(j.year, j.month)
+        selectDay(j.day)
+        detailTab = 0
+    }
+
+    function runSearch() {
+        searchQuery = searchField.text.trim()
+        searchResults = searchQuery !== "" && dbReady ? db.searchCalls(searchQuery) : []
+    }
+
+    // ── Formatting ───────────────────────────────────────────────────
+    function formatDuration(seconds) {
+        var m = Math.floor(seconds / 60)
+        var s = seconds % 60
+        return (m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s)
+    }
+
+    function formatTalkTime(seconds) {
+        var h = Math.floor(seconds / 3600)
+        var m = Math.floor((seconds % 3600) / 60)
+        if (h > 0) return h + "h " + (m < 10 ? "0" + m : m) + "m"
+        if (m > 0) return m + "m " + (seconds % 60) + "s"
+        return seconds + "s"
+    }
+
+    // Timestamps come back from SQLite as "yyyy-MM-ddTHH:mm:ss[.zzz]".
+    function timeOf(timestamp) {
+        var s = String(timestamp || "")
+        return s.length >= 16 ? s.substr(11, 5) : ""
+    }
+
+    function jalaliLabel(timestamp) {
+        var j = jalaliDate.fromGregorianString(String(timestamp || ""))
+        return j.year ? j.day + " " + monthNames[j.month] + " " + j.year : ""
+    }
+
+    function isMissed(call) {
+        return call.direction === "missed" || (call.direction === "incoming" && (call.duration || 0) === 0)
+    }
+
+    function escapeHtml(text) {
+        return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                           .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    }
+
+    // StyledText with every case-insensitive occurrence of `needle` emphasised.
+    function highlight(text, needle) {
+        var safe = escapeHtml(text || "")
+        if (needle) {
+            var pattern = new RegExp(escapeHtml(needle).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi")
+            safe = safe.replace(pattern, function(match) {
+                return "<b><font color=\"" + Theme.accent + "\">" + match + "</font></b>"
+            })
+        }
+        return safe.replace(/\n/g, "<br>")
     }
 
     readonly property bool wide: width >= 760
 
     ListModel {
         id: calendarModel
+    }
+
+    Timer {
+        id: searchDebounce
+        interval: 250
+        onTriggered: root.runSearch()
     }
 
     GridLayout {
@@ -212,9 +232,10 @@ Item {
         // ── Month grid ──
         Card {
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.fillHeight: root.wide
             Layout.preferredWidth: 3
-            Layout.minimumHeight: 360
+            Layout.preferredHeight: 372
+            Layout.minimumHeight: root.wide ? 360 : 372
 
             ColumnLayout {
                 anchors.fill: parent
@@ -233,7 +254,8 @@ Item {
                             font: Theme.fontHeading
                         }
                         Label {
-                            text: currentJalaliYear
+                            text: currentJalaliYear + (root.monthTotals.total > 0
+                                  ? " · " + root.monthTotals.total + (root.monthTotals.total === 1 ? " call" : " calls") : "")
                             color: Theme.textMuted
                             font: Theme.fontSmall
                         }
@@ -294,6 +316,12 @@ Item {
                         model: calendarModel
                         delegate: AbstractButton {
                             id: dayCell
+                            readonly property bool isToday: model.day > 0
+                                                            && currentJalaliYear === todayJalaliYear
+                                                            && currentJalaliMonth === todayJalaliMonth
+                                                            && model.day === todayJalaliDay
+                            readonly property bool isSelected: model.day > 0 && model.day === root.selectedDay
+
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             Layout.preferredWidth: 1
@@ -302,18 +330,24 @@ Item {
                             enabled: model.day > 0
                             hoverEnabled: true
                             focusPolicy: Qt.TabFocus
-                            Accessible.name: model.day > 0 ? monthNames[currentJalaliMonth] + " " + model.day : ""
-                            onClicked: selectDay(model.day)
+                            Accessible.name: model.day > 0
+                                             ? monthNames[currentJalaliMonth] + " " + model.day
+                                               + (model.count > 0 ? ", " + model.count + " calls" : "")
+                                             : ""
+                            onClicked: {
+                                root.selectDay(model.day)
+                                root.detailTab = 0
+                            }
 
                             HoverHandler { cursorShape: dayCell.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
 
                             background: Rectangle {
                                 visible: model.day > 0
                                 radius: Theme.radius
-                                color: model.isSelected ? Theme.accent
+                                color: dayCell.isSelected ? Theme.accent
                                      : dayCell.hovered ? Theme.surfaceHover
-                                     : model.isToday ? Theme.accentSoft : "transparent"
-                                border.width: model.isToday && !model.isSelected ? 1 : 0
+                                     : dayCell.isToday ? Theme.accentSoft : "transparent"
+                                border.width: dayCell.isToday && !dayCell.isSelected ? 1 : 0
                                 border.color: Theme.accent
                                 Behavior on color { ColorAnimation { duration: Theme.durFast } }
                                 FocusRing { target: dayCell }
@@ -324,19 +358,32 @@ Item {
                                 Label {
                                     anchors.centerIn: parent
                                     text: model.day > 0 ? model.day : ""
-                                    color: model.isSelected ? Theme.textOnAccent
-                                         : model.isToday ? Theme.accent : Theme.textPrimary
+                                    color: dayCell.isSelected ? Theme.textOnAccent
+                                         : dayCell.isToday ? Theme.accent : Theme.textPrimary
                                     font.family: Theme.fontFamily
                                     font.pixelSize: Theme.textMd
-                                    font.weight: model.isToday || model.isSelected ? Font.DemiBold : Font.Normal
+                                    font.weight: dayCell.isToday || dayCell.isSelected ? Font.DemiBold : Font.Normal
                                 }
+                                // Call-count badge
                                 Rectangle {
-                                    visible: model.hasCalls
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    anchors.bottom: parent.bottom
-                                    anchors.bottomMargin: 6
-                                    width: 5; height: 5; radius: 2.5
-                                    color: model.isSelected ? Theme.textOnAccent : Theme.success
+                                    visible: model.count > 0
+                                    anchors.top: parent.top
+                                    anchors.right: parent.right
+                                    anchors.topMargin: 3
+                                    anchors.rightMargin: 3
+                                    height: 15
+                                    width: Math.max(15, countLabel.implicitWidth + 8)
+                                    radius: 7.5
+                                    color: dayCell.isSelected ? Theme.textOnAccent : Theme.successSoft
+                                    Label {
+                                        id: countLabel
+                                        anchors.centerIn: parent
+                                        text: model.count > 99 ? "99+" : model.count
+                                        color: dayCell.isSelected ? Theme.accent : Theme.success
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 10
+                                        font.weight: Font.DemiBold
+                                    }
                                 }
                             }
                         }
@@ -345,99 +392,540 @@ Item {
 
                 RowLayout {
                     spacing: 6
-                    Rectangle { width: 6; height: 6; radius: 3; color: Theme.success }
-                    Label { text: "Day with calls"; color: Theme.textMuted; font: Theme.fontSmall }
+                    Rectangle {
+                        width: 15; height: 15; radius: 7.5
+                        color: Theme.successSoft
+                        Label {
+                            anchors.centerIn: parent
+                            text: "n"
+                            color: Theme.success
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            font.weight: Font.DemiBold
+                        }
+                    }
+                    Label { text: "Number of calls that day"; color: Theme.textMuted; font: Theme.fontSmall }
                 }
             }
         }
 
-        // ── Selected day ──
+        // ── Details ──
         Card {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.preferredWidth: 2
-            Layout.minimumHeight: 220
+            Layout.minimumHeight: 260
 
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 16
                 spacing: 12
 
-                SectionHeader {
+                // Segmented tab switcher
+                Rectangle {
                     Layout.fillWidth: true
-                    title: selectedDay > 0 ? monthNames[currentJalaliMonth] + " " + selectedDay : "Day details"
-                    iconName: "calendar"
-                    meta: selectedDay > 0 && callsForSelectedDay.length > 0
-                          ? callsForSelectedDay.length + (callsForSelectedDay.length === 1 ? " call" : " calls") : ""
-                }
+                    implicitHeight: 36
+                    radius: Theme.radius
+                    color: Theme.surfaceRaised
+                    border.width: 1
+                    border.color: Theme.border
 
-                ListView {
-                    id: callsList
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    visible: selectedDay > 0 && callsForSelectedDay.length > 0
-                    model: callsForSelectedDay
-                    clip: true
-                    spacing: 2
-                    boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-                    delegate: Rectangle {
-                        width: callsList.width - 8
-                        height: 48
-                        radius: Theme.radius
-                        color: callHover.hovered ? Theme.surfaceHover : "transparent"
-                        readonly property bool incoming: modelData.direction === "incoming"
-                        HoverHandler { id: callHover }
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 8
-                            anchors.rightMargin: 8
-                            spacing: 10
-
-                            Rectangle {
-                                width: 30; height: 30; radius: 15
-                                color: incoming ? Theme.successSoft : Theme.accentSoft
-                                Icon {
-                                    anchors.centerIn: parent
-                                    size: 14
-                                    name: incoming ? "arrow-in" : "arrow-out"
-                                    color: incoming ? Theme.success : Theme.accent
-                                }
-                            }
-                            Label {
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 3
+                        spacing: 3
+                        Repeater {
+                            model: [
+                                { label: "Day",    icon: "calendar" },
+                                { label: "Report", icon: "history" },
+                                { label: "Search", icon: "search" }
+                            ]
+                            delegate: SegmentButton {
                                 Layout.fillWidth: true
-                                text: modelData.name && modelData.name !== modelData.number ? modelData.name : (modelData.number || "")
-                                color: Theme.textPrimary
-                                font: Theme.fontBody
-                                elide: Text.ElideRight
-                            }
-                            Label {
-                                text: modelData.timestamp ? Qt.formatDateTime(new Date(modelData.timestamp), "HH:mm") : ""
-                                color: Theme.textMuted
-                                font: Theme.fontSmall
-                            }
-                            Label {
-                                text: root.formatDuration(modelData.duration || 0)
-                                color: Theme.textSecondary
-                                font: Theme.fontSmall
-                                Layout.preferredWidth: 40
-                                horizontalAlignment: Text.AlignRight
+                                Layout.fillHeight: true
+                                Layout.preferredWidth: 1
+                                text: modelData.label
+                                iconName: modelData.icon
+                                checked: root.detailTab === index
+                                onClicked: root.detailTab = index
                             }
                         }
                     }
                 }
 
-                EmptyState {
+                StackLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    visible: !callsList.visible
-                    iconName: "calendar"
-                    title: selectedDay > 0 ? "No calls on this day" : ""
-                    hint: selectedDay > 0 ? "Pick another day with a green dot." : "Select a day to see its calls."
+                    currentIndex: root.detailTab
+
+                    // ── Day: calls + notes ──
+                    ColumnLayout {
+                        spacing: 12
+
+                        SectionHeader {
+                            Layout.fillWidth: true
+                            title: selectedDay > 0
+                                   ? weekdayNames[jalaliDate.weekdayOf(currentJalaliYear, currentJalaliMonth, selectedDay)]
+                                     + ", " + selectedDay + " " + monthNames[currentJalaliMonth]
+                                   : "Day details"
+                            iconName: "calendar"
+                            meta: selectedDay > 0 ? root.gregorianFor(selectedDay) : ""
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: root.selectedStats !== null
+                            spacing: 8
+                            StatTile { label: "Calls";    value: root.selectedStats ? root.selectedStats.total : 0 }
+                            StatTile { label: "Incoming"; value: root.selectedStats ? root.selectedStats.incoming : 0; tone: Theme.success }
+                            StatTile { label: "Outgoing"; value: root.selectedStats ? root.selectedStats.outgoing : 0; tone: Theme.accent }
+                            StatTile { label: "Missed";   value: root.selectedStats ? root.selectedStats.missed : 0; tone: Theme.danger }
+                            StatTile { label: "Talk time"; value: root.selectedStats ? root.formatTalkTime(root.selectedStats.duration) : "" }
+                        }
+
+                        ListView {
+                            id: dayList
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: callsForSelectedDay.length > 0
+                            model: callsForSelectedDay
+                            clip: true
+                            spacing: 2
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                            delegate: CallEntry {
+                                width: dayList.width - 8
+                                call: modelData
+                            }
+                        }
+
+                        EmptyState {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: !dayList.visible
+                            iconName: "calendar"
+                            title: selectedDay > 0 ? "No calls on this day" : ""
+                            hint: selectedDay > 0 ? "Days with calls show a count badge."
+                                                  : "Select a day to see its calls and notes."
+                        }
+                    }
+
+                    // ── Report: calls per day for the shown month ──
+                    ColumnLayout {
+                        spacing: 12
+
+                        SectionHeader {
+                            Layout.fillWidth: true
+                            title: "Daily report · " + monthNames[currentJalaliMonth] + " " + currentJalaliYear
+                            iconName: "history"
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            StatTile { label: "Calls";       value: root.monthTotals.total }
+                            StatTile { label: "Active days"; value: root.monthReport.length }
+                            StatTile {
+                                label: "Avg / day"
+                                value: root.monthReport.length > 0
+                                       ? Math.round(root.monthTotals.total / root.monthReport.length * 10) / 10 : 0
+                            }
+                            StatTile { label: "Missed";    value: root.monthTotals.missed; tone: Theme.danger }
+                            StatTile { label: "Talk time"; value: root.formatTalkTime(root.monthTotals.duration) }
+                        }
+
+                        RowLayout {
+                            visible: root.monthReport.length > 0
+                            spacing: 14
+                            LegendDot { tone: Theme.success; text: "Answered in" }
+                            LegendDot { tone: Theme.accent;  text: "Outgoing" }
+                            LegendDot { tone: Theme.danger;  text: "Missed" }
+                        }
+
+                        ListView {
+                            id: reportList
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: root.monthReport.length > 0
+                            model: root.monthReport
+                            clip: true
+                            spacing: 2
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                            delegate: ItemDelegate {
+                                id: reportRow
+                                width: reportList.width - 8
+                                height: 48
+                                hoverEnabled: true
+                                leftPadding: 8
+                                rightPadding: 8
+                                Accessible.name: modelData.day + " " + monthNames[currentJalaliMonth] + ": "
+                                                 + modelData.total + " calls"
+                                onClicked: {
+                                    root.selectDay(modelData.day)
+                                    root.detailTab = 0
+                                }
+
+                                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                                background: Rectangle {
+                                    radius: Theme.radius
+                                    color: reportRow.hovered ? Theme.surfaceHover : "transparent"
+                                    Behavior on color { ColorAnimation { duration: Theme.durFast } }
+                                }
+
+                                contentItem: RowLayout {
+                                    spacing: 12
+
+                                    ColumnLayout {
+                                        Layout.preferredWidth: 92
+                                        spacing: 0
+                                        Label {
+                                            text: modelData.day + " " + monthNames[currentJalaliMonth]
+                                            color: Theme.textPrimary
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: Theme.textMd
+                                            font.weight: Font.DemiBold
+                                        }
+                                        Label {
+                                            text: weekdayNames[jalaliDate.weekdayOf(currentJalaliYear, currentJalaliMonth, modelData.day)]
+                                            color: Theme.textMuted
+                                            font: Theme.fontSmall
+                                        }
+                                    }
+
+                                    // Stacked bar, scaled to the busiest day of the month
+                                    Item {
+                                        id: barArea
+                                        Layout.fillWidth: true
+                                        implicitHeight: 10
+                                        readonly property real fullWidth: root.monthTotals.busiest > 0
+                                                                          ? width * modelData.total / root.monthTotals.busiest : 0
+                                        readonly property int answeredIn: Math.max(0, modelData.total - modelData.outgoing - modelData.missed)
+
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            radius: 5
+                                            color: Theme.surfaceRaised
+                                        }
+                                        Row {
+                                            height: parent.height
+                                            Rectangle {
+                                                width: barArea.fullWidth * barArea.answeredIn / modelData.total
+                                                height: parent.height; radius: 2
+                                                color: Theme.success
+                                            }
+                                            Rectangle {
+                                                width: barArea.fullWidth * modelData.outgoing / modelData.total
+                                                height: parent.height; radius: 2
+                                                color: Theme.accent
+                                            }
+                                            Rectangle {
+                                                width: barArea.fullWidth * modelData.missed / modelData.total
+                                                height: parent.height; radius: 2
+                                                color: Theme.danger
+                                            }
+                                        }
+                                    }
+
+                                    Label {
+                                        Layout.preferredWidth: 28
+                                        horizontalAlignment: Text.AlignRight
+                                        text: modelData.total
+                                        color: Theme.textPrimary
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.textMd
+                                        font.weight: Font.DemiBold
+                                    }
+                                    Label {
+                                        Layout.preferredWidth: 62
+                                        horizontalAlignment: Text.AlignRight
+                                        text: root.formatTalkTime(modelData.duration)
+                                        color: Theme.textSecondary
+                                        font: Theme.fontSmall
+                                    }
+                                }
+                            }
+                        }
+
+                        EmptyState {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: !reportList.visible
+                            iconName: "history"
+                            title: "No calls this month"
+                            hint: "Use the arrows to browse other months."
+                        }
+                    }
+
+                    // ── Search: numbers, names and note text ──
+                    ColumnLayout {
+                        spacing: 12
+
+                        AppTextField {
+                            id: searchField
+                            Layout.fillWidth: true
+                            leadingIcon: "search"
+                            placeholderText: "Search numbers, names or notes"
+                            onEdited: searchDebounce.restart()
+                        }
+
+                        Label {
+                            visible: root.searchQuery !== ""
+                            text: root.searchResults.length === 0 ? "No matches"
+                                  : root.searchResults.length + (root.searchResults.length === 1 ? " call" : " calls")
+                                    + " · click one to open its day"
+                            color: Theme.textMuted
+                            font: Theme.fontSmall
+                        }
+
+                        ListView {
+                            id: searchList
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: root.searchResults.length > 0
+                            model: root.searchResults
+                            clip: true
+                            spacing: 2
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                            delegate: CallEntry {
+                                width: searchList.width - 8
+                                call: modelData
+                                showDate: true
+                                needle: root.searchQuery
+                                onClicked: root.openDate(modelData.timestamp)
+                            }
+                        }
+
+                        EmptyState {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: !searchList.visible
+                            iconName: "search"
+                            title: root.searchQuery !== "" ? "Nothing found" : ""
+                            hint: root.searchQuery !== ""
+                                  ? "Try part of a number or a word from a note."
+                                  : "Find calls by phone number, contact name or note text."
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    // ── Inline components ────────────────────────────────────────────
+
+    // One call with its notes. Used by the Day and Search views.
+    component CallEntry: ItemDelegate {
+        id: entry
+        property var call: ({})
+        property bool showDate: false
+        property string needle: ""
+
+        readonly property bool incoming: call.direction === "incoming"
+        readonly property bool missed: root.isMissed(call)
+        readonly property bool named: !!call.name && call.name !== call.number
+        readonly property var callNotes: call.notes || []
+
+        hoverEnabled: true
+        leftPadding: 8
+        rightPadding: 8
+        topPadding: 8
+        bottomPadding: 8
+        Accessible.name: (named ? call.name : call.number) + ", " + root.timeOf(call.timestamp)
+
+        HoverHandler { cursorShape: entry.showDate ? Qt.PointingHandCursor : Qt.ArrowCursor }
+
+        background: Rectangle {
+            radius: Theme.radius
+            color: entry.hovered ? Theme.surfaceHover : "transparent"
+            Behavior on color { ColorAnimation { duration: Theme.durFast } }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 6
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Rectangle {
+                    width: 30; height: 30; radius: 15
+                    color: entry.missed ? Theme.dangerSoft : entry.incoming ? Theme.successSoft : Theme.accentSoft
+                    Icon {
+                        anchors.centerIn: parent
+                        size: 14
+                        name: entry.incoming || entry.call.direction === "missed" ? "arrow-in" : "arrow-out"
+                        color: entry.missed ? Theme.danger : entry.incoming ? Theme.success : Theme.accent
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+                    Label {
+                        Layout.fillWidth: true
+                        text: root.highlight(entry.named ? entry.call.name : (entry.call.number || ""), entry.needle)
+                        textFormat: Text.StyledText
+                        color: entry.missed ? Theme.danger : Theme.textPrimary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.textMd
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: (entry.named ? root.highlight(entry.call.number, entry.needle) + " · " : "")
+                              + (entry.missed ? "Missed" : entry.incoming ? "Incoming" : "Outgoing")
+                              + (entry.showDate ? " · " + root.jalaliLabel(entry.call.timestamp) : "")
+                        textFormat: Text.StyledText
+                        color: Theme.textMuted
+                        font: Theme.fontSmall
+                        elide: Text.ElideRight
+                    }
+                }
+
+                ColumnLayout {
+                    spacing: 1
+                    Label {
+                        Layout.alignment: Qt.AlignRight
+                        text: root.timeOf(entry.call.timestamp)
+                        color: Theme.textSecondary
+                        font: Theme.fontSmall
+                    }
+                    Label {
+                        Layout.alignment: Qt.AlignRight
+                        text: root.formatDuration(entry.call.duration || 0)
+                        color: Theme.textMuted
+                        font: Theme.fontSmall
+                    }
+                }
+            }
+
+            Repeater {
+                model: entry.callNotes
+                delegate: Rectangle {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 40
+                    implicitHeight: noteText.implicitHeight + 14
+                    radius: Theme.radiusSm
+                    color: Theme.surfaceRaised
+                    border.width: 1
+                    border.color: Theme.border
+
+                    Icon {
+                        id: noteIcon
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.leftMargin: 8
+                        anchors.topMargin: 8
+                        name: "notes"
+                        size: 12
+                        color: Theme.textMuted
+                    }
+                    Label {
+                        id: noteText
+                        anchors.left: noteIcon.right
+                        anchors.right: parent.right
+                        anchors.leftMargin: 6
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.highlight(modelData.text, entry.needle)
+                        textFormat: Text.StyledText
+                        wrapMode: Text.Wrap
+                        color: Theme.textSecondary
+                        font: Theme.fontSmall
+                    }
+                }
+            }
+        }
+    }
+
+    component StatTile: Rectangle {
+        id: tile
+        property string label: ""
+        property var value: ""
+        property color tone: Theme.textPrimary
+
+        Layout.fillWidth: true
+        Layout.preferredWidth: 1
+        implicitHeight: 54
+        radius: Theme.radius
+        color: Theme.surfaceRaised
+
+        ColumnLayout {
+            anchors.centerIn: parent
+            width: parent.width - 8
+            spacing: 0
+            Label {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                text: tile.value
+                color: tile.tone
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.textLg
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+            Label {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                text: tile.label
+                color: Theme.textMuted
+                font: Theme.fontSmall
+                elide: Text.ElideRight
+            }
+        }
+    }
+
+    component LegendDot: RowLayout {
+        id: legend
+        property color tone: Theme.textMuted
+        property string text: ""
+        spacing: 6
+        Rectangle { width: 8; height: 8; radius: 4; color: legend.tone }
+        Label { text: legend.text; color: Theme.textMuted; font: Theme.fontSmall }
+    }
+
+    component SegmentButton: AbstractButton {
+        id: seg
+        property string iconName: ""
+
+        hoverEnabled: true
+        focusPolicy: Qt.StrongFocus
+        Accessible.name: text
+        Accessible.role: Accessible.PageTab
+
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
+
+        background: Rectangle {
+            radius: Theme.radiusSm
+            color: seg.checked ? Theme.surface : seg.hovered ? Theme.surfaceHover : "transparent"
+            border.width: seg.checked ? 1 : 0
+            border.color: Theme.border
+            Behavior on color { ColorAnimation { duration: Theme.durFast } }
+            FocusRing { target: seg }
+        }
+
+        contentItem: RowLayout {
+            spacing: 6
+            Item { Layout.fillWidth: true }
+            Icon {
+                name: seg.iconName
+                size: 14
+                color: seg.checked ? Theme.accent : Theme.textSecondary
+            }
+            Label {
+                text: seg.text
+                color: seg.checked ? Theme.textPrimary : Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.textSm
+                font.weight: seg.checked ? Font.DemiBold : Font.Normal
+            }
+            Item { Layout.fillWidth: true }
         }
     }
 }
