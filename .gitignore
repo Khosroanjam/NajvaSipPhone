@@ -1,0 +1,18 @@
+# Build output
+build/
+build-*/
+/out/
+
+# Qt Creator / IDE per-user files
+*.user
+*.user.*
+.qtcreator/*.user
+.qtcreator/*.qtds
+.vs/
+.vscode/
+
+# Runtime files written next to the executable
+*.log
+
+# Vendored reference code (not part of the build)
+MicroSIP-3.22.3-src/
