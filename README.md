@@ -4,6 +4,8 @@
 
 > Internal project/target name: `SagharSIP`.
 
+**Download:** prebuilt Windows x64 packages are on the [Releases](https://github.com/Khosroanjam/NajvaSipPhone/releases) page. Unzip the package and run `SagharSIP.exe`. If it does not start on a PC without Visual Studio, run the bundled `vc_redist.x64.exe` first.
+
 ---
 
 ## Features
@@ -108,6 +110,47 @@ You can also open `CMakeLists.txt` in **Qt Creator**: choose the *Desktop Qt 6.8
 
 ---
 
+## Packaging a release
+
+Run every command from a **Developer PowerShell for VS 2022** (or after `vcvars64.bat`) in the project folder. Without that environment the compiler cannot find the standard headers (`Cannot open include file: 'type_traits'`).
+
+**1. Set the version** in `main.cpp` (`app.setApplicationVersion("0.1.0")`).
+
+**2. Build in Release mode:**
+
+```powershell
+cmake --build build-msvc
+```
+
+**3. Create a clean, self-contained folder with `windeployqt`.** Use `windeployqt` rather than `cmake --install`: the QML is loaded from `resources.qrc`, so the CMake deploy script does not find the QML imports and the folder would not run on another PC.
+
+```powershell
+New-Item -ItemType Directory dist\Najva-0.1.0 -Force
+Copy-Item build-msvc\SagharSIP.exe dist\Najva-0.1.0\
+C:\Qt\6.8.1\msvc2022_64\bin\windeployqt.exe --release --qmldir qml --compiler-runtime --no-translations dist\Najva-0.1.0\SagharSIP.exe
+```
+
+This copies the Qt DLLs, plugins, QML modules (Controls, Layouts, Shapes, QtCore) and `vc_redist.x64.exe`. PJSIP is linked statically, so it needs no DLLs.
+
+**4. Test the folder** on a PC without Qt (or with Qt removed from `PATH`), then zip it:
+
+```powershell
+Compress-Archive -Path dist\Najva-0.1.0 -DestinationPath dist\Najva-0.1.0-win64.zip
+```
+
+**5. Tag and publish:**
+
+```bash
+git tag -a v0.1.0 -m "Najva 0.1.0"
+git push origin v0.1.0
+```
+
+On GitHub, go to **Releases → Draft a new release**, pick the `v0.1.0` tag, write the release notes, attach `Najva-0.1.0-win64.zip`, and click **Publish release**.
+
+> `dist/` is git-ignored, so release packages are never committed.
+
+---
+
 ## Configuration
 
 Everything is configured in the app under **Settings**:
@@ -159,4 +202,4 @@ Then enter the server URL (for example `http://<host>:8000`) and the API key in 
 
 ## Author
 
-**Sadegh Khosroanjam** · [@khosroanjam](https://github.com/khosroanjam)
+**Sadegh Khosroanjam** · [@khosroanjam](https://github.com/Khosroanjam)

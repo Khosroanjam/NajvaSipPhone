@@ -16,3 +16,6 @@ build-*/
 
 # Vendored reference code (not part of the build)
 MicroSIP-3.22.3-src/
+
+# Release packages
+dist/
