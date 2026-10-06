@@ -27,7 +27,7 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName("SagharSIP");
     app.setOrganizationName("SagharSIP");
-    app.setApplicationVersion("0.1.0");
+    app.setApplicationVersion("0.1.1");
     app.setWindowIcon(QIcon(":/icons/najva.ico"));
 
     // Setup file logging
