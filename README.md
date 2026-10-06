@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="icons/najva-256.png" width="128" height="128" alt="Najva icon">
+</p>
+
 # Najva
 
 **Najva** is a modern desktop SIP softphone with a built-in call-center CRM, built with **Qt 6 / QML** on top of **PJSIP (pjsua2)**. It is Windows-first and designed for operators who spend the whole day on the phone: dial, answer, take notes after each call, look up callers in a phonebook, and review call activity on a Jalali (Persian) calendar.

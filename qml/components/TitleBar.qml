@@ -47,21 +47,14 @@ Rectangle {
         anchors.leftMargin: 14
         spacing: 10
 
-        Rectangle {
-            Layout.preferredWidth: 22
-            Layout.preferredHeight: 22
-            radius: 6
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Theme.accent }
-                GradientStop { position: 1.0; color: Theme.accent2 }
-            }
-            Icon {
-                anchors.centerIn: parent
-                name: "phone"
-                size: 12
-                strokeWidth: 2.4
-                color: Theme.textOnAccent
-            }
+        // App icon; the simplified variant stays legible at title-bar size.
+        Image {
+            Layout.preferredWidth: 24
+            Layout.preferredHeight: 24
+            source: "qrc:/icons/najva-small.svg"
+            sourceSize: Qt.size(96, 96)
+            smooth: true
+            mipmap: true
         }
 
         Label {

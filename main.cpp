@@ -1,4 +1,5 @@
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QDir>
@@ -27,6 +28,7 @@ int main(int argc, char *argv[])
     app.setApplicationName("SagharSIP");
     app.setOrganizationName("SagharSIP");
     app.setApplicationVersion("0.1.0");
+    app.setWindowIcon(QIcon(":/icons/najva.ico"));
 
     // Setup file logging
     QString logPath = QDir(QCoreApplication::applicationDirPath())

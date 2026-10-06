@@ -1,6 +1,9 @@
 <RCC>
     <qresource prefix="/">
         <file>qtquickcontrols2.conf</file>
+        <file>icons/najva.ico</file>
+        <file>icons/najva.svg</file>
+        <file>icons/najva-small.svg</file>
         <file>qml/Main.qml</file>
         <file>qml/SettingsPage.qml</file>
         <file>qml/theme/qmldir</file>

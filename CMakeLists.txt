@@ -56,6 +56,7 @@ qt_add_executable(SagharSIP
     src/network/SyncEngine.h src/network/SyncEngine.cpp
     src/calendar/JalaliDate.h src/calendar/JalaliDate.cpp
     resources.qrc
+    $<$<PLATFORM_ID:Windows>:app.rc>
 )
 
 # ── Qt Link ──────────────────────────────────────────────────────────
