@@ -52,6 +52,7 @@ signals:
     void incomingCall(int callId, const QString &callerNumber, const QString &callerName);
     void callCreated(int callId);
     void callEnded(int callId);
+    void callFailed(const QString &reason);
     void callHistoryCreated(int callId, int callHistoryId, const QString &number, const QString &name);
 
 private slots:
@@ -61,6 +62,7 @@ private slots:
 private:
     void handleIncomingCall(int callId, const QString &number, const QString &displayName);
     int nextCallId();
+    void ensureAudioDevices();
 
     SipAccount *m_account;
     QMap<int, SipCall *> m_calls;

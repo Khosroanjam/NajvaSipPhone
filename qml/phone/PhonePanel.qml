@@ -14,6 +14,7 @@ Item {
     property int activeCallId: -1
     property int lastCallId: -1          // survives callEnded for the after-call note
     property var lastNotesData: []
+    property string callError: ""
 
     readonly property bool sipReady: typeof sipManager !== "undefined" && sipManager !== null
     readonly property var activeCall: sipReady && activeCallId > 0 ? sipManager.findCall(activeCallId) : null
@@ -67,6 +68,10 @@ Item {
             root.lastNotesData = root.dbReady ? db.lastNotesByNumber(root.dialedNumber, 3) : []
             root.inCall = true
         }
+        function onCallFailed(reason) {
+            root.callError = reason
+            callErrorTimer.restart()
+        }
         function onCallEnded(callId) {
             if (callId === root.activeCallId) {
                 root.inCall = false
@@ -81,6 +86,45 @@ Item {
             var call = sipManager.findCall(callId)
             afterCallDialog.callDuration = call ? call.duration : 0
             afterCallDialog.open()
+        }
+    }
+
+    Timer {
+        id: callErrorTimer
+        interval: 6000
+        onTriggered: root.callError = ""
+    }
+
+    // Call-failure banner (e.g. no microphone / audio device).
+    Rectangle {
+        z: 10
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: 16
+        height: errorLabel.implicitHeight + 20
+        radius: Theme.radius
+        color: Theme.dangerSoft
+        border.color: Theme.danger
+        visible: root.callError !== ""
+        opacity: visible ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.durNormal } }
+
+        Label {
+            id: errorLabel
+            anchors.fill: parent
+            anchors.margins: 10
+            text: "تماس برقرار نشد: " + root.callError
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            color: Theme.danger
+            font: Theme.fontBody
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: root.callError = ""
         }
     }
 

@@ -115,6 +115,7 @@ void SipManager::initialize()
             qDebug() << "[SipManager] libStart...";
             m_endpoint->libStart();
             qDebug() << "[SipManager] PJSIP initialized successfully";
+            ensureAudioDevices();
 
             // No PJSIP worker thread: poll timers (retransmissions,
             // re-registration) and events on the GUI thread.
@@ -179,11 +180,39 @@ void SipManager::shutdown()
     m_initialized = false;
 }
 
+// A PC without a microphone makes pjsua fail to open the sound device
+// (PJMEDIA_EAUD_INVDEV), which blocks calls entirely. In that case fall back
+// to speaker-only mode so calls still work (listen-only).
+void SipManager::ensureAudioDevices()
+{
+    try {
+        pj::AudDevManager &mgr = m_endpoint->audDevManager();
+        mgr.refreshDevs();
+        bool hasCapture = false;
+        const unsigned count = mgr.getDevCount();
+        for (unsigned i = 0; i < count; i++) {
+            if (mgr.getDevInfo(i).inputCount > 0) {
+                hasCapture = true;
+                break;
+            }
+        }
+        const unsigned mode = hasCapture ? 0 : PJSUA_SND_DEV_SPEAKER_ONLY;
+        mgr.setSndDevMode(mode);
+        if (!hasCapture)
+            qWarning() << "[SipManager] No capture device found — using speaker-only mode";
+    } catch (const pj::Error &err) {
+        qWarning() << "[SipManager] ensureAudioDevices failed:" << err.info().c_str();
+    }
+}
+
 int SipManager::makeCall(const QString &number)
 {
     if (!m_initialized || !m_account || number.isEmpty())
         return -1;
 
+    ensureAudioDevices();
+
+    int callId = -1;
     try {
         QString uri;
         if (number.contains('@')) {
@@ -192,7 +221,7 @@ int SipManager::makeCall(const QString &number)
             uri = QString("sip:%1@%2").arg(number, m_account->server());
         }
 
-        int callId = nextCallId();
+        callId = nextCallId();
         auto call = new SipCall(*m_account, PJSUA_INVALID_ID, callId, this);
         m_calls[callId] = call;
 
@@ -205,6 +234,16 @@ int SipManager::makeCall(const QString &number)
         return callId;
     } catch (const pj::Error &err) {
         qWarning() << "[SipManager] makeCall failed:" << err.info().c_str();
+        if (callId >= 0) {
+            // Don't leave the failed call registered as an active call.
+            if (SipCall *failed = m_calls.take(callId))
+                failed->deleteLater();
+            emit activeCallsChanged();
+        }
+        const QString reason = err.status == PJMEDIA_EAUD_INVDEV
+            ? QStringLiteral("دستگاه صوتی (میکروفون/بلندگو) یافت نشد")
+            : QString::fromStdString(err.info());
+        emit callFailed(reason);
         return -1;
     }
 }
