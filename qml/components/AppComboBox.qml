@@ -86,7 +86,13 @@ ColumnLayout {
                 spacing: 8
                 Label {
                     Layout.fillWidth: true
-                    text: combo.textRole ? (Array.isArray(combo.model) ? modelData[combo.textRole] : model[combo.textRole]) : modelData
+                    text: {
+                        // JS-array models only expose modelData; QAbstractItemModels expose model[role].
+                        var v = (typeof modelData === "object" && modelData !== null && combo.textRole)
+                                ? modelData[combo.textRole]
+                                : (combo.textRole && model ? model[combo.textRole] : modelData)
+                        return v === undefined || v === null ? "" : String(v)
+                    }
                     color: Theme.textPrimary
                     font: Theme.fontBody
                     elide: Text.ElideRight
